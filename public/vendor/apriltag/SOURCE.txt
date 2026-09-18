@@ -1,0 +1,5 @@
+ARENA AprilTag WASM
+https://github.com/arenaxr/apriltag-js-standalone
+Commit: f0fe55676265a1251ad36f18bac9939206a59e19
+BSD-3-Clause license in LICENSE.
+Binaries vendored unchanged.

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#132420"><meta name="description" content="A miniature medieval siege, brought to life on your printed AprilTag battlefield."><link rel="icon" type="image/svg+xml" href="/favicon.svg"><title>Paperkeep — A tabletop siege</title></head>
+<body>
+ <main id="app">
+  <div class="ambient"></div>
+  <div id="viewport"><video id="camera" muted autoplay playsinline></video><div id="scene"></div></div>
+  <header class="topbar">
+   <a class="brand" href="./" aria-label="Paperkeep home"><svg viewBox="0 0 32 36" aria-hidden="true"><path d="M3 31V11h5V5h5v6h6V5h5v6h5v20H3Zm10 0V21h6v10M2 33h28"/></svg><span>PAPERKEEP<small>A TABLETOP SIEGE</small></span></a>
+   <div class="status" id="tracking-status"><i></i><span>Tabletop preview</span></div>
+   <button class="icon-btn" id="help-btn" aria-label="How to play">?</button>
+  </header>
+  <section class="hud" id="hud" hidden aria-label="Battle status">
+   <div class="castle-stat"><span class="eyebrow">THE KEEP</span><div><strong id="hp-value">1,000</strong><span>/ 1,000</span></div><div class="health-track"><i id="hp-fill"></i></div></div>
+   <div class="stat"><span class="eyebrow">WAVE</span><strong id="wave-value">01 <em>/ 06</em></strong></div>
+   <div class="stat"><span class="eyebrow">DEFEATED</span><strong id="kills-value">0</strong></div>
+  </section>
+  <section class="welcome" id="welcome">
+   <div class="welcome-copy"><div class="edition"><span></span> YOUR TABLE. YOUR KINGDOM.</div><h1>A little castle.<br>A mighty <em>defence.</em></h1><p>Raise a kingdom on paper. Move your towers.<br>Hold the line against the coming siege.</p>
+   <div class="welcome-actions"><button class="button primary" id="camera-btn"><svg viewBox="0 0 24 24"><path d="M4 7h4l2-3h4l2 3h4v13H4V7Z"/><circle cx="12" cy="13" r="4"/></svg>Play on my table <span>↗</span></button><button class="button secondary" id="demo-btn">Try the demo <span>→</span></button></div>
+   <div class="privacy-note">Camera stays on your device. No sign-in, just a siege.</div>
+   <div class="setup-steps"><div><b>01</b><span>Lay down<br>the field</span></div><div><b>02</b><span>Place your<br>tower tags</span></div><div><b>03</b><span>Defend<br>the keep</span></div></div></div>
+   <div class="scene-caption"><span class="mini-line"></span> THE BORDER KEEP <small>Before the first light of battle</small></div>
+  </section>
+  <div class="notice" id="notice" role="status" hidden></div>
+  <div class="wave-toast" id="wave-toast" aria-live="polite"></div>
+  <section class="battle-controls" id="battle-controls" hidden>
+   <div class="tower-panel"><div class="tower-heading"><span class="eyebrow">ARCHER TOWERS</span><span id="tower-count">0 / 10 deployed</span></div><div class="tower-slots" id="tower-slots"></div><p id="tower-hint">Place Tag A–J flat on the field. Each tower covers an 80 mm radius.</p></div>
+   <div class="control-row"><button class="button primary" id="start-btn">Begin the siege <span>⚔</span></button><button class="button secondary" id="pause-btn" hidden>Pause</button><button class="icon-btn" id="range-btn" aria-label="Toggle tower ranges" aria-pressed="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 1v5m0 12v5M1 12h5m12 0h5"/></svg></button><button class="icon-btn" id="exit-btn" aria-label="Return to menu">×</button></div>
+  </section>
+  <dialog id="help"><button class="dialog-close icon-btn" id="help-close" aria-label="Close help">×</button><span class="eyebrow">THE FIELD MANUAL</span><h2>Paper into a kingdom.</h2><ol><li><b>Print the kit at 100%.</b> Lay the 5 × 7 field flat, with good, even lighting.</li><li><b>Point your rear camera at the field.</b> Keep several tags visible. The castle appears in the centre.</li><li><b>Place Tag A–J on the same surface.</b> Each becomes an archer tower. Move the paper to move the tower.</li><li><b>Begin the siege.</b> Towers aim and fire automatically within two tag spacings (80 mm). Survive six waves.</li></ol><p>Keep towers flat on the field plane. A covered or removed tower becomes inactive after a short grace period. Combat pauses when the field leaves view.</p><p class="demo-help">In the demo, tap a letter to add or remove a tower, then drag it across the battlefield.</p><a class="button secondary" href="/print-kit.pdf" target="_blank" rel="noopener">Open printable kit <span>↗</span></a></dialog>
+  <dialog id="result"><span class="eyebrow" id="result-kicker">THE SIEGE IS OVER</span><h2 id="result-title">The keep has fallen.</h2><p id="result-description"></p><button class="button primary" id="restart-btn">Raise the banners again <span>↗</span></button></dialog>
+ </main><script type="module" src="/src/main.js"></script>
+</body></html>
