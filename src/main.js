@@ -46,7 +46,7 @@ async function enterCamera(){
  try{
   if(!isSecureContext||!navigator.mediaDevices?.getUserMedia)throw new Error('Camera play needs HTTPS (or localhost on this computer). Open the secure site on your phone. You can still try the demo.');
   // Ask for the rear camera only; no microphone or recording.
-  const media=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:960}}});
+  const media=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:960},frameRate:{ideal:60}}});
   if(token!==enterToken){media.getTracks().forEach(t=>t.stop());return;}stream=media;
   await tracker.init();if(token!==enterToken)return;
   $('camera').srcObject=media;await $('camera').play();
@@ -66,8 +66,7 @@ function onTracking(frame){
  if(frame.h){
   lastBoard=frame.timestamp;world.applyBoard(frame.h,frame.width,frame.height);
   for(const t of frame.towers){
-   const prev=game.towers.get(t.id),alpha=prev?.active ? .65 : 1;
-   game.setTower(t.id,prev?prev.x+(t.x-prev.x)*alpha:t.x,prev?prev.z+(t.z-prev.z)*alpha:t.z,true);seenTowers.set(t.id,performance.now());
+   game.setTower(t.id,t.x,t.z,true);seenTowers.set(t.id,performance.now());
   }
  }
 }

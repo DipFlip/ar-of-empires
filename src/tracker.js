@@ -1,8 +1,8 @@
-import { estimateBoard, invert3, project, fitHomography } from './tracking-math.js';
+import { estimateBoard, invert3, project } from './tracking-math.js';
 export class Tracker {
  constructor(video,manifest,onFrame,onError){
   this.video=video;this.onFrame=onFrame;this.onError=onError;this.markers=new Map(manifest.markers.filter(m=>m.page===1).map(m=>[m.id,m]));
-  this.canvas=document.createElement('canvas');this.ctx=this.canvas.getContext('2d',{willReadFrequently:true});this.busy=false;this.running=false;this.h=null;this.scanTimes=[];this.misses=0;this.metrics=null;
+  this.canvas=document.createElement('canvas');this.ctx=this.canvas.getContext('2d',{willReadFrequently:true});this.busy=false;this.running=false;this.h=null;this.scanTimes=[];this.misses=0;this.metrics=null;this.frameCallback=null;this.runId=0;
  }
  async init(){
   if(this.ready)return;
@@ -12,8 +12,8 @@ export class Tracker {
    this.worker.onerror=e=>{clearTimeout(timer);reject(new Error(e.message||'Could not load the tag detector.'));this.busy=false;this.onError(e.message);};
    this.worker.onmessage=({data})=>{
     if(data.type==='ready'){clearTimeout(timer);this.ready=true;resolve();}
-    else if(data.type==='error'){clearTimeout(timer);this.busy=false;reject(new Error(data.message));this.onError(data.message);this.schedule();}
-    else if(data.type==='detections'){this.busy=false;this.receive(data);this.schedule();}
+    else if(data.type==='error'){clearTimeout(timer);this.busy=false;reject(new Error(data.message));this.onError(data.message);}
+    else if(data.type==='detections'){this.busy=false;this.receive(data);}
    };
   });
  }
@@ -28,12 +28,8 @@ export class Tracker {
   data.metrics=this.metrics;
   if(board){
    const target=board.h;
-   // Smooth the screen positions of board corners, not unrelated pose components.
-   const corners=[[-105,-148.5],[105,-148.5],[105,148.5],[-105,148.5]];
-   if(this.h&&this.width===data.width&&this.height===data.height&&data.timestamp-this.lastSeen<400){
-    const pairs=corners.map(world=>{const prev=project(this.h,...world),next=project(target,...world);const jump=Math.hypot(prev[0]-next[0],prev[1]-next[1]);const alpha=jump>35?1:.72;return {world,image:prev.map((v,i)=>v+(next[i]-v)*alpha)};});
-    this.h=fitHomography(pairs)||target;
-   }else this.h=target;
+   // Use the current multi-tag fit directly: temporal smoothing trails camera motion.
+   this.h=target;
    this.width=data.width;this.height=data.height;this.lastSeen=data.timestamp;
    const inv=invert3(target),towers=[];
    for(const tag of data.tags){if(tag.id<10||tag.id>19||!inv)continue;
@@ -60,16 +56,28 @@ export class Tracker {
   this.busy=true;this.worker.postMessage({gray:gray.buffer,width:this.canvas.width,height:this.canvas.height,timestamp,prepMs:performance.now()-timestamp},[gray.buffer]);
  }
  schedule(){
-  clearTimeout(this.timer);if(!this.running)return;
-  // Start-to-start pacing: do not add another polling interval after a slow scan.
-  const delay=Math.max(0,100-(performance.now()-(this.startedAt||0)));
-  this.timer=setTimeout(()=>{
-   if(!this.running)return;
-   this.startedAt=performance.now();
-   if(this.video.readyState>=2)this.scan();
-   if(!this.busy)this.schedule();
-  },delay);
+  if(!this.running||this.frameCallback!==null)return;
+  const runId=this.runId;
+  const onFrame=(_now,metadata)=>{
+   if(!this.running||runId!==this.runId)return;
+   this.frameCallback=null;
+   this.schedule();
+   // Drop frames while the worker is busy; never queue captured images.
+   if(this.busy||this.video.readyState<2)return;
+   const mediaTime=metadata?.mediaTime??this.video.currentTime;
+   if(Number.isFinite(mediaTime)&&mediaTime===this.lastFrameTime)return;
+   this.lastFrameTime=mediaTime;
+   this.scan();
+  };
+  this.frameCallback=this.video.requestVideoFrameCallback
+   ?this.video.requestVideoFrameCallback(onFrame):requestAnimationFrame(onFrame);
  }
- start(){this.running=true;this.h=null;this.lastSeen=0;this.scanTimes=[];this.misses=0;this.metrics=null;this.startedAt=0;this.schedule();}
- stop(){this.running=false;clearTimeout(this.timer);this.h=null;this.busy=false;this.worker?.terminate();this.worker=null;this.ready=false;}
+ cancelFrame(){
+  if(this.frameCallback===null)return;
+  if(this.video.requestVideoFrameCallback)this.video.cancelVideoFrameCallback(this.frameCallback);
+  else cancelAnimationFrame(this.frameCallback);
+  this.frameCallback=null;
+ }
+ start(){this.cancelFrame();this.runId++;this.running=true;this.h=null;this.lastSeen=0;this.scanTimes=[];this.misses=0;this.metrics=null;this.lastFrameTime=null;this.schedule();}
+ stop(){this.running=false;this.runId++;this.cancelFrame();this.h=null;this.busy=false;this.worker?.terminate();this.worker=null;this.ready=false;}
 }
