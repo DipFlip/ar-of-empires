@@ -2,7 +2,7 @@ import { estimateBoard, invert3, project, fitHomography } from './tracking-math.
 export class Tracker {
  constructor(video,manifest,onFrame,onError){
   this.video=video;this.onFrame=onFrame;this.onError=onError;this.markers=new Map(manifest.markers.filter(m=>m.page===1).map(m=>[m.id,m]));
-  this.canvas=document.createElement('canvas');this.ctx=this.canvas.getContext('2d',{willReadFrequently:true});this.busy=false;this.running=false;this.h=null;
+  this.canvas=document.createElement('canvas');this.ctx=this.canvas.getContext('2d',{willReadFrequently:true});this.busy=false;this.running=false;this.h=null;this.scanTimes=[];this.misses=0;this.metrics=null;
  }
  async init(){
   if(this.ready)return;
@@ -12,13 +12,20 @@ export class Tracker {
    this.worker.onerror=e=>{clearTimeout(timer);reject(new Error(e.message||'Could not load the tag detector.'));this.busy=false;this.onError(e.message);};
    this.worker.onmessage=({data})=>{
     if(data.type==='ready'){clearTimeout(timer);this.ready=true;resolve();}
-    else if(data.type==='error'){clearTimeout(timer);this.busy=false;reject(new Error(data.message));this.onError(data.message);}
-    else if(data.type==='detections'){this.busy=false;this.receive(data);}
+    else if(data.type==='error'){clearTimeout(timer);this.busy=false;reject(new Error(data.message));this.onError(data.message);this.schedule();}
+    else if(data.type==='detections'){this.busy=false;this.receive(data);this.schedule();}
    };
   });
  }
  receive(data){
+  const received=performance.now(),fitStart=received;
   const board=estimateBoard(data.tags,this.markers);
+  this.misses=board?0:this.misses+1;
+  this.scanTimes.push(received);if(this.scanTimes.length>20)this.scanTimes.shift();
+  this.metrics={...data.timings,fitMs:performance.now()-fitStart,latencyMs:received-data.timestamp,
+   hz:this.scanTimes.length>1?(this.scanTimes.length-1)*1000/(received-this.scanTimes[0]):0,
+   width:data.width,height:data.height};
+  data.metrics=this.metrics;
   if(board){
    const target=board.h;
    // Smooth the screen positions of board corners, not unrelated pose components.
@@ -41,13 +48,28 @@ export class Tracker {
  scan(source=this.video){
   if(!this.ready||this.busy)return;
   const w=source.videoWidth||source.naturalWidth||source.width,h=source.videoHeight||source.naturalHeight||source.height;if(!w||!h)return;
-  const scale=Math.min(1,1000/Math.max(w,h));this.canvas.width=Math.round(w*scale);this.canvas.height=Math.round(h*scale);
+  const timestamp=performance.now();
+  // Occasionally retry at full resolution when small tags cannot be acquired.
+  const longEdge=this.misses>=3&&this.misses%4===3?1000:640;
+  const scale=Math.min(1,longEdge/Math.max(w,h)),width=Math.round(w*scale),height=Math.round(h*scale);
+  if(this.canvas.width!==width||this.canvas.height!==height){this.canvas.width=width;this.canvas.height=height;}
   this.ctx.drawImage(source,0,0,this.canvas.width,this.canvas.height);
   const rgba=this.ctx.getImageData(0,0,this.canvas.width,this.canvas.height).data;
   const gray=new Uint8Array(this.canvas.width*this.canvas.height);
   for(let i=0,j=0;i<rgba.length;i+=4,j++)gray[j]=(rgba[i]*77+rgba[i+1]*150+rgba[i+2]*29)>>8;
-  this.busy=true;this.worker.postMessage({gray:gray.buffer,width:this.canvas.width,height:this.canvas.height,timestamp:performance.now()},[gray.buffer]);
+  this.busy=true;this.worker.postMessage({gray:gray.buffer,width:this.canvas.width,height:this.canvas.height,timestamp,prepMs:performance.now()-timestamp},[gray.buffer]);
  }
- start(){this.running=true;this.h=null;this.lastSeen=0;this.timer=setInterval(()=>{if(this.running&&this.video.readyState>=2)this.scan();},90);}
- stop(){this.running=false;clearInterval(this.timer);this.h=null;this.busy=false;this.worker?.terminate();this.worker=null;this.ready=false;}
+ schedule(){
+  clearTimeout(this.timer);if(!this.running)return;
+  // Start-to-start pacing: do not add another polling interval after a slow scan.
+  const delay=Math.max(0,100-(performance.now()-(this.startedAt||0)));
+  this.timer=setTimeout(()=>{
+   if(!this.running)return;
+   this.startedAt=performance.now();
+   if(this.video.readyState>=2)this.scan();
+   if(!this.busy)this.schedule();
+  },delay);
+ }
+ start(){this.running=true;this.h=null;this.lastSeen=0;this.scanTimes=[];this.misses=0;this.metrics=null;this.startedAt=0;this.schedule();}
+ stop(){this.running=false;clearTimeout(this.timer);this.h=null;this.busy=false;this.worker?.terminate();this.worker=null;this.ready=false;}
 }

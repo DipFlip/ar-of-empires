@@ -3,6 +3,7 @@ import manifest from '../assets/apriltags/marker-manifest.json';
 import { SiegeGame } from './game.js';
 import { World } from './world.js';
 import { Tracker } from './tracker.js';
+import { PerformanceMonitor } from './performance.js';
 const $=id=>document.getElementById(id);
 const game=new SiegeGame();
 let world;
@@ -13,7 +14,10 @@ const seenTowers=new Map();
 const tracker=new Tracker($('camera'),manifest,onTracking,error=>{
  if(mode==='ar'){cameraFailure='Tracking stopped. Return to the menu and reconnect: '+error;lastBoard=0;}
 });
-function setNotice(message,error=false){$('notice').hidden=!message;$('notice').textContent=message;$('notice').classList.toggle('error',error);}
+const performanceMonitor=new PerformanceMonitor(world.renderer,tracker,new URLSearchParams(location.search).has('stats'));
+world.monitor=performanceMonitor;
+let noticeMessage,noticeError;
+function setNotice(message,error=false){if(message===noticeMessage&&error===noticeError)return;noticeMessage=message;noticeError=error;$('notice').hidden=!message;$('notice').textContent=message;$('notice').classList.toggle('error',error);}
 function toast(message){$('wave-toast').textContent=message;$('wave-toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('wave-toast').classList.remove('show'),2800);}
 function buildSlots(){
  for(let id=10;id<20;id++){
@@ -67,14 +71,22 @@ function onTracking(frame){
   }
  }
 }
+let uiWave;
+function setText(element,text){text=String(text);if(element.textContent!==text)element.textContent=text;}
 function updateUI(){
- $('hp-value').textContent=Math.ceil(game.hp).toLocaleString();$('hp-fill').style.width=game.hp/10+'%';$('wave-value').innerHTML=`${String(Math.max(1,game.wave)).padStart(2,'0')} <em>/ 06</em>`;$('kills-value').textContent=game.kills;
- const count=[...game.towers.values()].filter(t=>t.active).length;$('tower-count').textContent=`${count} / 10 deployed`;
- document.querySelectorAll('.tower-slot').forEach(b=>{const tower=game.towers.get(Number(b.dataset.id));b.classList.toggle('active',!!tower?.active);b.setAttribute('aria-pressed',String(!!tower?.active));b.disabled=mode==='ar';});
+ setText($('hp-value'),Math.ceil(game.hp).toLocaleString());
+ const hpWidth=game.hp/10+'%';if($('hp-fill').style.width!==hpWidth)$('hp-fill').style.width=hpWidth;
+ if(uiWave!==game.wave){uiWave=game.wave;$('wave-value').innerHTML=`${String(Math.max(1,game.wave)).padStart(2,'0')} <em>/ 06</em>`;}
+ setText($('kills-value'),game.kills);
+ const count=[...game.towers.values()].filter(t=>t.active).length;setText($('tower-count'),`${count} / 10 deployed`);
+ document.querySelectorAll('.tower-slot').forEach(b=>{
+  const tower=game.towers.get(Number(b.dataset.id)),active=!!tower?.active,pressed=String(active),disabled=mode==='ar';
+  b.classList.toggle('active',active);if(b.getAttribute('aria-pressed')!==pressed)b.setAttribute('aria-pressed',pressed);if(b.disabled!==disabled)b.disabled=disabled;
+ });
  const locked=mode==='ar'&&!cameraFailure&&performance.now()-lastBoard<650;
  $('tracking-status').classList.toggle('locked',locked||mode==='demo');
- $('tracking-status').querySelector('span').textContent=mode==='menu'?'Tabletop preview':mode==='demo'?'Demo · drag your towers':locked?`Field locked · ${visibleTags} tags`:'Looking for the field';
- $('start-btn').disabled=mode==='ar'&&(!locked||count===0);
+ setText($('tracking-status').querySelector('span'),mode==='menu'?'Tabletop preview':mode==='demo'?'Demo · drag your towers':locked?`Field locked · ${visibleTags} tags${tracker.metrics?.hz ? ` · ${tracker.metrics.hz.toFixed(1)} Hz` : ''}`:'Looking for the field');
+ const disabled=mode==='ar'&&(!locked||count===0);if($('start-btn').disabled!==disabled)$('start-btn').disabled=disabled;
 }
 function showResult(){
  $('result-title').textContent=game.state==='victory'?'The keep stands.':'The keep has fallen.';
@@ -83,7 +95,7 @@ function showResult(){
  if(!$('result').open)$('result').showModal();
 }
 function animate(now){
- requestAnimationFrame(animate);const dt=Math.min((now-lastTime)/1000,.05);lastTime=now;
+ requestAnimationFrame(animate);const started=performance.now(),frameMs=now-lastTime,dt=Math.min(frameMs/1000,.05);lastTime=now;
  const lost=mode==='ar'&&(now-lastBoard>650||!!cameraFailure);
  if(mode==='ar'){
   for(const [id,t] of game.towers)t.active=now-(seenTowers.get(id)||0)<1400;
@@ -93,10 +105,14 @@ function animate(now){
   else setNotice(userPaused?'Battle paused. Reposition your towers, then resume.':'');
  }
  const paused=userPaused||lost||$('help').open||document.hidden;
+ const gameStart=performance.now();
  if(mode!=='menu'&&!paused){game.step(dt);for(const event of game.events){if(event.type==='wave')toast(`Wave ${event.wave} · Hold the line`);else if(event.type==='victory'||event.type==='defeat')showResult();}game.events=[];}
  if(mode==='menu')game.time+=dt;
+ const gameMs=performance.now()-gameStart;
  world.update(game,dt,now/1000);
+ const uiStart=performance.now();
  if(now-uiTime>120){updateUI();uiTime=now;}
+ performanceMonitor.record(now,frameMs,{gameMs,...world.metrics,uiMs:performance.now()-uiStart,frameCallbackMs:performance.now()-started});
 }
 buildSlots();preview();setMode('menu');requestAnimationFrame(animate);
 $('camera-btn').addEventListener('click',enterCamera);
@@ -119,4 +135,4 @@ canvas.addEventListener('pointerdown',event=>{
 canvas.addEventListener('pointermove',event=>{if(dragId===null)return;const p=world.pickGround(event);if(p)game.setTower(dragId,Math.max(-99,Math.min(99,p.x)),Math.max(-142,Math.min(142,p.z)));});
 for(const name of ['pointerup','pointercancel','lostpointercapture'])canvas.addEventListener(name,()=>{dragId=null;});
 window.addEventListener('resize',resize);$('camera').addEventListener('resize',resize);window.addEventListener('pagehide',()=>{enterToken++;stopCamera();});
-if(import.meta.env.DEV)window.__paperkeep={game,world,tracker,get mode(){return mode;},get lastBoard(){return lastBoard;},onTracking};
+if(import.meta.env.DEV)window.__paperkeep={game,world,tracker,performance:performanceMonitor,get mode(){return mode;},get lastBoard(){return lastBoard;},onTracking};

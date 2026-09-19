@@ -51,12 +51,35 @@ The camera image is contain-fitted (letterboxed when needed), with exactly the s
 
 ## Tracking behaviour
 
-- The locally vendored ARENA AprilTag WASM detector runs in a Web Worker at up to ~11 scans/sec, using frames capped at 1000 pixels on the long edge.
+- The locally vendored ARENA AprilTag WASM detector runs in a Web Worker, targeting 10 scans/sec with frames capped at 640 pixels on the long edge. After three missed board detections, every fourth miss retries at 1000 pixels to help reacquire small tags. Scans never overlap; slow scans are followed immediately rather than waiting for another polling tick.
+- The field status displays the measured scan rate (a rolling window of 20 results). In development, `window.__paperkeep.tracker.metrics` reports frame preparation, WASM detection, total worker time, board fitting, capture-to-result latency, and input dimensions. The rate counts completed scans; board lock still requires a successful, recent board detection.
 - `assets/apriltags/marker-manifest.json` is the board layout source of truth. Board coordinates use millimetres, the sheet centre as origin, x right, y up out of the paper, and z toward the sheet's bottom.
 - Every visible field tag supplies a homography hypothesis. Inliers from the other field tags are refitted together, so corner tags are not required. One complete visible marker can anchor the plane, although multiple spread-out tags improve stability.
 - Detected tower centres are inverse-projected onto that same plane; the physical tower-tag rotation does not limit its automatic aiming.
 - A tower disappears and stops firing after 1.4 seconds without detection. Full board loss pauses combat and hides stale overlays after 650 ms. Reacquisition resumes automatically unless manually paused.
 - The ground plane aligns projectively to the detected grid. 3D height uses an approximate 60-degree camera field of view; per-device calibration could improve the vertical appearance at steep angles. There is no hand/object depth occlusion, world tracking when all tags leave view, or persistence after reload.
+
+## Performance diagnostics
+
+Append `?stats=1` to the app URL to show render FPS, the slowest recent frame,
+main-thread phase timings, asynchronous GPU time (when supported), draw calls
+including shadows, and camera/detector latency. This works in production as well
+as development. GPU timing is opt-in and never waits synchronously for the GPU.
+In development, `window.__paperkeep.performance.snapshot` exposes the same frame
+metrics. The scan-rate indicator alone does not measure rendering smoothness.
+
+`scripts/profile-browser.js` is a five-second browser profiling function for a
+running development page. Evaluate it with Playwright CLI's `eval` command to
+sample the current camera/game/render pipeline, GPU queries, long tasks, DOM
+mutations, and resource counts. It restores the methods it temporarily wraps.
+Use the same scene and viewport for before/after comparisons; a desktop or
+synthetic camera test does not establish performance on a physical phone.
+
+The castle and existing tower/enemy objects persist across frames; arrows use a
+mesh pool. Static model parts are batched with vertex colours, while limbs,
+flags, health bars, and range indicators remain independent. HUD and notice
+updates avoid writing unchanged DOM values. Pixel ratio and shadows retain
+their original settings.
 
 ## Files
 

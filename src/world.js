@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { batchStaticMeshes, staticMaterial } from './mesh-batching.js';
 import { planePose } from './tracking-math.js';
 import { TOWER_RANGE } from './game.js';
 const materials=new Map();
@@ -28,7 +29,7 @@ function castle(){
  box(g,0,2,29,12,1,13,0x9e8c68);
  for(const x of [-7,7]){box(g,x,21,7.1,3,6,.3,0x303c40);box(g,x,13,7.1,3,5,.3,0x303c40);}
  flag(g,0,45,-5,0x68a4b2);flag(g,-21,34,20,0x68a4b2);flag(g,21,34,-20,0x68a4b2);
- const health=healthbar(35);health.position.set(0,61,0);g.add(health);g.userData.health=health;return g;
+ const health=healthbar(35);health.position.set(0,61,0);g.add(health);g.userData.health=health;batchStaticMeshes(g,{sharedGeometries:[cube]});return g;
 }
 function person(type,friendly=false){
  const g=new THREE.Group(),body=new THREE.Group();g.add(body);
@@ -44,6 +45,7 @@ function person(type,friendly=false){
   const bow=new THREE.Mesh(new THREE.TorusGeometry(2.8,.28,4,12,Math.PI),mat(0x7f5834));bow.rotation.z=-Math.PI/2;bow.position.set(3.6,7,1.3);body.add(bow);
   box(body,3.6,7,1.3,.15,5.5,.15,0xd7c9a6);
  }
+ batchStaticMeshes(body,{exclude:[...legs,arm],sharedGeometries:[cube]});
  g.userData={body,legs,arm};return g;
 }
 function tower(id){
@@ -55,11 +57,12 @@ function tower(id){
  const disc=new THREE.Mesh(new THREE.CircleGeometry(TOWER_RANGE,64),new THREE.MeshBasicMaterial({color:0xc5b56e,transparent:true,opacity:.035,depthWrite:false,side:THREE.DoubleSide}));disc.rotation.x=-Math.PI/2;disc.position.y=.4;g.add(disc);
  const labelCanvas=document.createElement('canvas');labelCanvas.width=128;labelCanvas.height=128;const ctx=labelCanvas.getContext('2d');ctx.fillStyle='#182c2a';ctx.beginPath();ctx.arc(64,64,49,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#d6bd80';ctx.lineWidth=5;ctx.stroke();ctx.fillStyle='#f9edcf';ctx.font='bold 65px Georgia';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String.fromCharCode(65+id-10),64,68);
  const badge=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(labelCanvas),depthTest:false}));badge.scale.set(9,9,1);badge.position.set(0,39,0);g.add(badge);
+ batchStaticMeshes(g,{sharedGeometries:[cube]});
  g.userData={archer,ring,disc,id,badge};return g;
 }
 export class World {
  constructor(container){
-  this.renderer=new THREE.WebGLRenderer({alpha:true,antialias:true,powerPreference:'high-performance'});this.renderer.setPixelRatio(Math.min(devicePixelRatio,2));this.renderer.shadowMap.enabled=true;this.renderer.shadowMap.type=THREE.PCFSoftShadowMap;this.renderer.setClearColor(0x000000,0);container.appendChild(this.renderer.domElement);
+  this.renderer=new THREE.WebGLRenderer({alpha:true,antialias:true,powerPreference:'high-performance'});this.renderer.setPixelRatio(Math.min(devicePixelRatio,2));this.renderer.shadowMap.enabled=true;this.renderer.shadowMap.type=THREE.PCFSoftShadowMap;this.renderer.setClearColor(0x000000,0);this.renderer.info.autoReset=false;this.metrics={sceneMs:0,renderCpuMs:0};container.appendChild(this.renderer.domElement);
   this.scene=new THREE.Scene();this.camera=new THREE.PerspectiveCamera(40,1,1,3000);this.root=new THREE.Group();this.scene.add(this.root);
   const ambient=new THREE.HemisphereLight(0xdceceb,0x655738,2.6);this.scene.add(ambient);
   const sun=new THREE.DirectionalLight(0xffe1a6,3.1);sun.position.set(-130,330,180);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);sun.shadow.camera.left=-250;sun.shadow.camera.right=250;sun.shadow.camera.top=250;sun.shadow.camera.bottom=-250;sun.shadow.camera.near=1;sun.shadow.camera.far=1000;sun.shadow.bias=-.001;sun.shadow.normalBias=.3;this.root.add(sun);this.root.add(sun.target);
@@ -73,7 +76,10 @@ export class World {
    if(i%3===0)cylinder(this.root,x,2,z,1,3,4,0x858c70,5);
    else {const tuft=box(this.root,x,1,z,.6,2,2,0x506747);tuft.rotation.z=.3;}
   }
+  batchStaticMeshes(this.root,{exclude:[this.platform,this.ground],sharedGeometries:[cube]});
   this.castle=castle();this.root.add(this.castle);this.towers=new Map();this.enemies=new Map();this.arrowMeshes=[];this.healthbars=[this.castle.userData.health];this.ranges=true;
+  this.flags=[];this.castle.traverse(o=>{if(o.userData.flag)this.flags.push(o);});
+  this.arrowFrom=new THREE.Vector3();this.arrowTo=new THREE.Vector3();this.arrowUp=new THREE.Vector3(0,1,0);this.rootQ=new THREE.Quaternion();this.cameraQ=new THREE.Quaternion();
   this.arrowGeo=new THREE.ConeGeometry(.75,4,5);this.arrowMat=mat(0xe2c38a);this.mode='demo';this.setDemo();
  }
  setDemo(){this.mode='demo';this.root.matrixAutoUpdate=true;this.root.matrix.identity();this.root.position.set(0,0,0);this.root.rotation.set(0,0,0);this.root.scale.set(1,1,1);this.root.visible=true;this.platform.visible=true;this.ground.material.transparent=false;this.ground.material.opacity=1;this.camera.position.set(260,345,380);this.camera.lookAt(0,0,0);this.resize();}
@@ -87,8 +93,9 @@ export class World {
  }
  toggleRanges(){this.ranges=!this.ranges;return this.ranges;}
  update(game,dt,time){
+  const started=performance.now();
   setHealth(this.castle.userData.health,game.hp/1000);
-  this.castle.traverse(o=>{if(o.userData.flag)o.userData.flag.rotation.y=Math.sin(time*3+o.position.x)*.12;});
+  for(const o of this.flags)o.userData.flag.rotation.y=Math.sin(time*3+o.position.x)*.12;
   for(const [id,data] of game.towers){
    let mesh=this.towers.get(id);if(!mesh){mesh=tower(id);this.towers.set(id,mesh);this.root.add(mesh);}
    mesh.position.set(data.x,0,data.z);mesh.visible=data.active;mesh.userData.archer.rotation.y=data.angle;
@@ -106,22 +113,25 @@ export class World {
   while(this.arrowMeshes.length<game.projectiles.length){const mesh=new THREE.Mesh(this.arrowGeo,this.arrowMat);this.root.add(mesh);this.arrowMeshes.push(mesh);}
   this.arrowMeshes.forEach((mesh,i)=>{
    const p=game.projectiles[i];mesh.visible=!!p;if(!p)return;
-   const t=Math.min(1,p.age/p.duration),a=new THREE.Vector3(...p.from),b=new THREE.Vector3(...p.to);
+   const t=Math.min(1,p.age/p.duration),a=this.arrowFrom.fromArray(p.from),b=this.arrowTo.fromArray(p.to);
    mesh.position.lerpVectors(a,b,t);mesh.position.y+=Math.sin(t*Math.PI)*12;
-   const dir=b.sub(a);dir.y+=Math.cos(t*Math.PI)*Math.PI*12;mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),dir.normalize());
+   const dir=b.sub(a);dir.y+=Math.cos(t*Math.PI)*Math.PI*12;mesh.quaternion.setFromUnitVectors(this.arrowUp,dir.normalize());
   });
   this.root.updateMatrixWorld(true);
-  const rootQ=this.root.getWorldQuaternion(new THREE.Quaternion()).invert(),cameraQ=this.camera.getWorldQuaternion(new THREE.Quaternion());
+  const rootQ=this.root.getWorldQuaternion(this.rootQ).invert(),cameraQ=this.camera.getWorldQuaternion(this.cameraQ);
   const q=rootQ.multiply(cameraQ);this.castle.userData.health.quaternion.copy(q);
   for(const mesh of this.enemies.values())mesh.userData.health.quaternion.copy(q);
+  const renderStart=performance.now();this.metrics.sceneMs=renderStart-started;
+  this.renderer.info.reset();this.monitor?.beginRender();
   this.renderer.render(this.scene,this.camera);
+  this.metrics.renderCpuMs=performance.now()-renderStart;this.monitor?.endRender();
  }
  pickGround(event){
   const rect=this.renderer.domElement.getBoundingClientRect(),pointer=new THREE.Vector2((event.clientX-rect.left)/rect.width*2-1,-(event.clientY-rect.top)/rect.height*2+1);
   const ray=new THREE.Raycaster();ray.setFromCamera(pointer,this.camera);const hit=new THREE.Vector3();return ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0,1,0),0),hit)?hit:null;
  }
  disposeObject(object){
-  const cached=new Set(materials.values()),geometries=new Set(),ownedMaterials=new Set();
+  const cached=new Set([...materials.values(),staticMaterial]),geometries=new Set(),ownedMaterials=new Set();
   object.traverse(child=>{if(child.geometry&&child.geometry!==cube)geometries.add(child.geometry);if(child.material&&!cached.has(child.material))ownedMaterials.add(child.material);});
   for(const geometry of geometries)geometry.dispose();
   for(const material of ownedMaterials){material.map?.dispose();material.dispose();}
