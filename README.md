@@ -69,10 +69,29 @@ as development. GPU timing is opt-in and never waits synchronously for the GPU.
 In development, `window.__paperkeep.performance.snapshot` exposes the same frame
 metrics. The scan-rate indicator alone does not measure rendering smoothness.
 
+Tracking diagnostics show p50 (median) / p95 over the last 120 detections:
+canvas resize, drawing/scaling the video, pixel readback, grayscale conversion,
+message delivery to the worker, WASM buffer allocation/copy, native detection,
+JSON decoding, delivery back to the main thread, board fitting, and applying the
+result. Native detection includes the vendored C wrapper's result serialization;
+its internal detector stages are not separately instrumented. Cross-thread
+message timings use `performance.timeOrigin` to align clocks and include message
+serialization and event-loop waiting. Small timings can round to zero on phones.
+
+`Cycle` measures capture start through application of the result. `RAF wait`
+measures idle time after the previous result before the next capture; `interval`
+measures capture-start to capture-start. The percentage over 16.7 ms identifies
+cycles exceeding a 60 Hz processing budget. `Capture→submit` additionally includes
+waiting for a rendered frame and issuing its WebGL commands; it is **not** sensor
+exposure-to-screen latency, nor a GPU completion measurement. The camera setting
+is the browser-reported track setting, not a measured unique camera-frame rate.
+Scan frequency can exceed fresh camera-frame frequency when the camera is slower
+than the display.
+
 `scripts/profile-browser.js` is a five-second browser profiling function for a
 running development page. Evaluate it with Playwright CLI's `eval` command to
 sample the current camera/game/render pipeline, GPU queries, long tasks, DOM
-mutations, and resource counts. It restores the methods it temporarily wraps.
+mutations, resource counts, and the detailed tracking summary. It restores the methods it temporarily wraps.
 Use the same scene and viewport for before/after comparisons; a desktop or
 synthetic camera test does not establish performance on a physical phone.
 

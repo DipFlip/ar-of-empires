@@ -12,6 +12,7 @@ export class PerformanceMonitor {
   this.query=this.gl.createQuery();this.gl.beginQuery(this.ext.TIME_ELAPSED_EXT,this.query);
  }
  endRender(){
+  this.tracker.markRendered(performance.now());
   if(!this.ext)return;
   if(this.query){this.gl.endQuery(this.ext.TIME_ELAPSED_EXT);this.queries.push(this.query);this.query=null;}
   const gl=this.gl,disjoint=gl.getParameter(this.ext.GPU_DISJOINT_EXT);
@@ -34,7 +35,23 @@ export class PerformanceMonitor {
   this.start=now;this.frames=0;this.sums={};this.worst=0;
   if(this.panel){
    const s=this.snapshot,t=this.tracker.metrics||{},ms=value=>Number.isFinite(value)?value.toFixed(1):'—';
-   this.panel.textContent=`Render ${ms(s.fps)} fps · tracking ${ms(t.hz)} Hz\nAnimation ${ms(s.frameCallbackMs)} ms · worst frame ${ms(s.worstFrameMs)} ms\nGame ${ms(s.gameMs)} · scene ${ms(s.sceneMs)} · UI ${ms(s.uiMs)} ms\nRender CPU ${ms(s.renderCpuMs)} · GPU ${ms(s.gpuMs)} ms\nDraw calls ${s.drawCalls} · triangles ${s.triangles}\nCapture ${ms(t.prepMs)} · detect ${ms(t.detectMs)} · fit ${ms(t.fitMs)} ms\nTracking latency ${ms(t.latencyMs)} ms · ${t.width||0}×${t.height||0}\nGeometries ${s.geometries} · textures ${s.textures}`;
+   const summary=this.tracker.getTimingSummary(),pair=key=>summary[key]?`${ms(summary[key].p50)}/${ms(summary[key].p95)}`:'—/—';
+   const camera=this.tracker.video.srcObject?.getVideoTracks?.()[0]?.getSettings?.();
+   this.panel.textContent=`Render ${ms(s.fps)} fps · scans ${ms(t.hz)} Hz
+Render CPU ${ms(s.renderCpuMs)} · GPU ${ms(s.gpuMs)} ms
+Game ${ms(s.gameMs)} · scene ${ms(s.sceneMs)} · UI ${ms(s.uiMs)} ms
+Tracking p50/p95 ms · ${summary.samples} samples
+Capture ${pair('prepMs')} · resize ${pair('resizeMs')}
+Draw ${pair('drawMs')} · readback ${pair('readbackMs')}
+Gray ${pair('grayMs')} · to worker ${pair('outboundMs')}
+WASM copy ${pair('bufferMs')} · detect ${pair('detectMs')}
+Decode ${pair('decodeMs')} · return ${pair('returnMs')}
+Fit ${pair('fitMs')} · apply ${pair('applyMs')}
+Cycle ${pair('cycleMs')} · >16.7ms ${ms(summary.overBudgetPercent)}%
+RAF wait ${pair('idleMs')} · interval ${pair('intervalMs')}
+Render wait ${pair('renderWaitMs')} · capture→submit ${pair('captureToRenderMs')}
+Input ${t.width||0}×${t.height||0} · camera setting ${ms(camera?.frameRate)} fps
+Draw calls ${s.drawCalls} · triangles ${s.triangles}`;
   }
  }
 }
