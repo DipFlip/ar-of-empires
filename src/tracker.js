@@ -13,7 +13,7 @@ export class Tracker {
    this.worker.onmessage=({data})=>{
     if(data.type==='ready'){clearTimeout(timer);this.ready=true;resolve();}
     else if(data.type==='error'){clearTimeout(timer);this.busy=false;reject(new Error(data.message));this.onError(data.message);}
-    else if(data.type==='detections'){this.busy=false;this.receive(data);}
+    else if(data.type==='detections')this.complete(data);
    };
   });
  }
@@ -55,29 +55,27 @@ export class Tracker {
   for(let i=0,j=0;i<rgba.length;i+=4,j++)gray[j]=(rgba[i]*77+rgba[i+1]*150+rgba[i+2]*29)>>8;
   this.busy=true;this.worker.postMessage({gray:gray.buffer,width:this.canvas.width,height:this.canvas.height,timestamp,prepMs:performance.now()-timestamp},[gray.buffer]);
  }
+ complete(data){
+  this.busy=false;
+  try{this.receive(data);}finally{this.schedule();}
+ }
  schedule(){
-  if(!this.running||this.frameCallback!==null)return;
+  if(!this.running||!this.ready||this.busy||this.frameCallback!==null)return;
   const runId=this.runId;
-  const onFrame=(_now,metadata)=>{
+  this.frameCallback=requestAnimationFrame(()=>{
    if(!this.running||runId!==this.runId)return;
    this.frameCallback=null;
-   this.schedule();
-   // Drop frames while the worker is busy; never queue captured images.
-   if(this.busy||this.video.readyState<2)return;
-   const mediaTime=metadata?.mediaTime??this.video.currentTime;
-   if(Number.isFinite(mediaTime)&&mediaTime===this.lastFrameTime)return;
-   this.lastFrameTime=mediaTime;
-   this.scan();
-  };
-  this.frameCallback=this.video.requestVideoFrameCallback
-   ?this.video.requestVideoFrameCallback(onFrame):requestAnimationFrame(onFrame);
+   // Capture the latest image only after the previous detection has completed.
+   // Do not depend on video-frame callbacks or mediaTime advancing: some live
+   // camera/browser combinations expose these APIs without reliable updates.
+   if(this.video.readyState>=2)this.scan();
+   if(!this.busy)this.schedule();
+  });
  }
  cancelFrame(){
   if(this.frameCallback===null)return;
-  if(this.video.requestVideoFrameCallback)this.video.cancelVideoFrameCallback(this.frameCallback);
-  else cancelAnimationFrame(this.frameCallback);
-  this.frameCallback=null;
+  cancelAnimationFrame(this.frameCallback);this.frameCallback=null;
  }
- start(){this.cancelFrame();this.runId++;this.running=true;this.h=null;this.lastSeen=0;this.scanTimes=[];this.misses=0;this.metrics=null;this.lastFrameTime=null;this.schedule();}
+ start(){this.cancelFrame();this.runId++;this.running=true;this.h=null;this.lastSeen=0;this.scanTimes=[];this.misses=0;this.metrics=null;this.schedule();}
  stop(){this.running=false;this.runId++;this.cancelFrame();this.h=null;this.busy=false;this.worker?.terminate();this.worker=null;this.ready=false;}
 }
