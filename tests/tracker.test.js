@@ -99,3 +99,11 @@ test('recycles returned grayscale storage instead of allocating each scan',t=>{
  tracker.complete({...messages[0],tags:[],board:null,gray:buffer});tracker.scan();assert.equal(messages[1].gray,buffer);
  tracker.stop();assert.equal(tracker.grayBuffers.size,0);assert.equal(tracker.captureSurfaces.size,0);
 });
+
+test('refreshes depleted anchors early without repeatedly scanning every frame',t=>{
+ const {tracker,messages}=fixture(t);let now=1150;t.mock.method(performance,'now',()=>now);
+ tracker.flowReady=true;tracker.lastDetection=1000;tracker.trackedPoints=80;
+ tracker.scan();assert.equal(messages.at(-1).forceDetect,false);
+ tracker.busy=false;tracker.trackedPoints=30;tracker.scan();assert.equal(messages.at(-1).forceDetect,true);
+ tracker.busy=false;tracker.lastDetection=now;now+=17;tracker.scan();assert.equal(messages.at(-1).forceDetect,false);
+});

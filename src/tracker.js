@@ -62,7 +62,7 @@ export class Tracker {
   const w=source.videoWidth||source.naturalWidth||source.width,h=source.videoHeight||source.naturalHeight||source.height;if(!w||!h)return;
   const timestamp=performance.now();
   // Occasionally retry at full resolution when small tags cannot be acquired.
-  const forceDetect=!this.flowReady||timestamp-this.lastDetection>=300;
+  const forceDetect=!this.flowReady||timestamp-this.lastDetection>=(this.trackedPoints<40?100:300);
   const longEdge=forceDetect?(this.misses>=3&&this.misses%4===3?1000:640):320;
   const scale=Math.min(1,longEdge/Math.max(w,h)),width=Math.round(w*scale),height=Math.round(h*scale);
   const key=`${width}x${height}`;

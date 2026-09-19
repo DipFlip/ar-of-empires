@@ -106,14 +106,16 @@ export class BoardFlow {
   if(!this.previous||!this.points.length||this.timestamp-this.lastAnchor>1000||this.timestamp-this.lastFrame>200)return null;
   const count=this.points.length;
   for(let i=0;i<count;i++){this.xy[i*2]=this.points[i].image[0];this.xy[i*2+1]=this.points[i].image[1];}
-  jsfeat.optical_flow_lk.track(this.previous,this.current,this.xy,this.next,count,7,12,this.status,.03,.001);
-  jsfeat.optical_flow_lk.track(this.current,this.previous,this.next,this.back,count,7,12,this.backStatus,.03,.001);
+  // Larger patches retain enough structure when camera motion smears small tags.
+  // Forward/backward and geometric checks remain strict.
+  jsfeat.optical_flow_lk.track(this.previous,this.current,this.xy,this.next,count,11,15,this.status,.03,.001);
+  jsfeat.optical_flow_lk.track(this.current,this.previous,this.next,this.back,count,11,15,this.backStatus,.03,.001);
   const good=[];
   for(let i=0;i<count;i++){
    const x=this.next[2*i],y=this.next[2*i+1];
    if(!this.status[i]||!this.backStatus[i]||x<5||y<5||x>=this.width-6||y>=this.height-6)continue;
    if(Math.hypot(this.back[2*i]-this.xy[2*i],this.back[2*i+1]-this.xy[2*i+1])>.8)continue;
-   const original=this.points[i];if(patchError(this.previous.data[0],this.current.data[0],original.image,[x,y])>30)continue;
+   const original=this.points[i];if(patchError(this.previous.data[0],this.current.data[0],original.image,[x,y])>45)continue;
    good.push({...original,image:[x,y]});
   }
   const board=robustBoard(good.filter(p=>!p.tower));if(!board)return null;

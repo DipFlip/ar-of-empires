@@ -130,3 +130,5 @@ Browser checks were run in Chromium on desktop and a 390 × 844 viewport. The re
 - [JSFeat](https://github.com/inspirit/jsfeat), MIT; pinned to 0.0.8 and bundled locally for image pyramids, optical flow, and FAST features. Its license is in `public/vendor/jsfeat/`.
 - [Three.js](https://threejs.org/), MIT.
 - [Browser camera secure-context requirements](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia).
+
+Motion robustness: optical flow uses 11-pixel patches with forward/backward and geometric rejection. When fewer than 40 board points remain, full tag refreshes shorten from 300 ms to 100 ms to rebuild anchors. Severe camera blur can still prevent a valid observation; the tracker does not invent a pose through full occlusion.

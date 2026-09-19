@@ -75,3 +75,23 @@ test('tracks a moved tower independently without moving the board',()=>{
  const tower=result.tags.find(t=>t.id===10);assert.ok(tower);
  const x=tower.corners.reduce((s,c)=>s+c.x,0)/4;assert.ok(Math.abs(x-199)<1);
 });
+
+function motionBlur(gray,radius){
+ const result=new Uint8Array(gray.length);
+ for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+  let sum=0;for(let dx=-radius;dx<=radius;dx++)sum+=gray[y*width+Math.max(0,Math.min(width-1,x+dx))];
+  result[y*width+x]=sum/(radius*2+1);
+ }
+ return result;
+}
+test('retains an accurate board through motion blur and return to a sharp frame',()=>{
+ const {flow,gray}=seed();
+ for(let frame=1;frame<=8;frame++){
+  const moved=warp(gray,[1,0,frame*3,0,1,frame,0,0,1]);
+  flow.prepare(frame<7?motionBlur(moved,4):moved,width,height,frame*16);
+  const result=flow.track();assert.ok(result,`lost board at frame ${frame}`);
+  const actual=project(result.board.h,0,0);
+  assert.ok(Math.hypot(actual[0]-160-frame*3,actual[1]-120-frame)<1.5);
+  flow.finish();
+ }
+});
