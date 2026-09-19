@@ -84,7 +84,7 @@ function updateUI(){
  });
  const locked=mode==='ar'&&!cameraFailure&&performance.now()-lastBoard<650;
  $('tracking-status').classList.toggle('locked',locked||mode==='demo');
- setText($('tracking-status').querySelector('span'),mode==='menu'?'Tabletop preview':mode==='demo'?'Demo · drag your towers':locked?`Field locked · ${visibleTags} tags${tracker.metrics?.hz ? ` · ${tracker.metrics.hz.toFixed(1)} Hz` : ''}`:'Looking for the field');
+ setText($('tracking-status').querySelector('span'),mode==='menu'?'Tabletop preview':mode==='demo'?'Demo · drag your towers':locked?`Field locked · ${tracker.trackedPoints?`${tracker.trackedPoints} points`:`${visibleTags} tags`}${tracker.metrics?.hz ? ` · ${tracker.metrics.hz.toFixed(1)} Hz` : ''}`:'Looking for the field');
  const disabled=mode==='ar'&&(!locked||count===0);if($('start-btn').disabled!==disabled)$('start-btn').disabled=disabled;
 }
 function showResult(){

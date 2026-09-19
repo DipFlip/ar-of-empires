@@ -86,3 +86,16 @@ test('small camera movement applies the latest board fit without temporal lag',t
  tracker.receive(detection(0,0));tracker.receive(detection(10,16));
  assert.equal(frames.length,2);assert.ok(Math.abs(frames[1].h[2]/frames[1].h[8]-310)<1e-6);
 });
+
+test('uses smaller images only with distributed flow anchors, and refreshes full scans',t=>{
+ const {tracker,messages}=fixture(t);let now=1000;t.mock.method(performance,'now',()=>now);
+ tracker.flowReady=true;tracker.lastDetection=1000;tracker.scan();assert.equal(messages[0].width,320);assert.equal(messages[0].forceDetect,false);
+ tracker.busy=false;now=1310;tracker.scan();assert.equal(messages[1].width,640);assert.equal(messages[1].forceDetect,true);
+ tracker.busy=false;tracker.lastDetection=1310;tracker.flowReady=false;tracker.scan();assert.equal(messages[2].width,640);
+});
+
+test('recycles returned grayscale storage instead of allocating each scan',t=>{
+ const {tracker,messages}=fixture(t);tracker.scan();const buffer=messages[0].gray;
+ tracker.complete({...messages[0],tags:[],board:null,gray:buffer});tracker.scan();assert.equal(messages[1].gray,buffer);
+ tracker.stop();assert.equal(tracker.grayBuffers.size,0);assert.equal(tracker.captureSurfaces.size,0);
+});

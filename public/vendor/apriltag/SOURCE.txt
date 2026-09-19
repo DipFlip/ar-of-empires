@@ -2,4 +2,7 @@ ARENA AprilTag WASM
 https://github.com/arenaxr/apriltag-js-standalone
 Commit: f0fe55676265a1251ad36f18bac9939206a59e19
 BSD-3-Clause license in LICENSE.
-Binaries vendored unchanged.
+WASM binary unchanged. The JavaScript loader is in src/vendor/apriltag.js,
+with only an ES module export appended; its license is copied alongside it.
+Application worker and optical-flow integration are in src/tracking-worker.js
+and src/flow-tracking.js.

@@ -51,25 +51,28 @@ The camera image is contain-fitted (letterboxed when needed), with exactly the s
 
 ## Tracking behaviour
 
-- The locally vendored ARENA AprilTag WASM detector runs in a Web Worker, processing fresh camera frames as quickly as the device allows, with frames capped at 640 pixels on the long edge. The camera requests 60 fps when supported; tracking has no fixed 10 Hz cap. After three missed board detections, every fourth miss retries at 1000 pixels to help reacquire small tags. Each completed detection schedules capture of the latest camera image on the next animation frame. Scans never overlap or queue, and the loop does not depend on video-frame callbacks or a changing media timestamp. It can sample an unchanged image if the camera is slower than the display.
-- The field status displays the measured scan rate (a rolling window of 20 results). In development, `window.__paperkeep.tracker.metrics` reports frame preparation, WASM detection, total worker time, board fitting, capture-to-result latency, and input dimensions. The rate counts completed scans; board lock still requires a successful, recent board detection.
+- The tracker alternates full AprilTag detection (normally every 300 ms) with pyramidal Lucas–Kanade optical flow. Camera input requests 60 fps when supported; one worker processes one frame at a time, with no fixed 10 Hz cap or queued camera images.
+- Full scans normally use 640 pixels on the long edge; ordinary flow frames use 320, reducing pixel readback by 75%. Separate capture canvases and returned grayscale buffers are reused. Failed acquisition periodically retries at 1000 pixels. Detection uses internal decimation 2 while locked and 1.5 for acquisition.
+- Up to 80 board points are selected across verified markers. When marker corners alone are insufficient, FAST texture corners inside those verified markers supplement them. Forward/backward flow checks, patch appearance checks and robust homography fitting reject occluded or independently moving points. Flow requires at least 12 inliers from three marker IDs with spatial coverage; one visible marker still works through full detection.
+- All four corners of each known tower are tracked independently of the board. Full scans discover new/moved towers and refresh identities about every 300 ms. Failed board flow triggers detection in that same cycle. A flow-only board without a fresh decoded anchor expires after one second; long frame gaps force reacquisition. Existing tower disappearance and board-loss timeouts still apply.
+- The status displays point count and update rate. `?stats=1` distinguishes flow-update frequency from full-scan frequency, and reports separate flow/detection latency distributions, pyramid building, feature seeding, and the existing capture/render timings.
 - `assets/apriltags/marker-manifest.json` is the board layout source of truth. Board coordinates use millimetres, the sheet centre as origin, x right, y up out of the paper, and z toward the sheet's bottom.
-- Every visible field tag supplies a homography hypothesis. Inliers from the other field tags are refitted together, so corner tags are not required. One complete visible marker can anchor the plane, although multiple spread-out tags improve stability.
-- Board and tower positions use the latest detection without temporal smoothing, avoiding extra lag during movement; this can expose more stationary jitter.
+- On full scans, every visible field tag supplies a homography hypothesis. Inliers from the other field tags are refitted together, so corner tags are not required. One complete visible marker can anchor the plane, although multiple spread-out tags improve stability.
+- Board and tower positions use the latest validated detection or flow estimate without temporal smoothing, avoiding extra lag during movement; this can expose more stationary jitter.
 - Detected tower centres are inverse-projected onto that same plane; the physical tower-tag rotation does not limit its automatic aiming.
-- A tower disappears and stops firing after 1.4 seconds without detection. Full board loss pauses combat and hides stale overlays after 650 ms. Reacquisition resumes automatically unless manually paused.
+- A tower disappears and stops firing after 1.4 seconds without a validated observation. Full board loss pauses combat and hides stale overlays after 650 ms. Reacquisition resumes automatically unless manually paused.
 - The ground plane aligns projectively to the detected grid. 3D height uses an approximate 60-degree camera field of view; per-device calibration could improve the vertical appearance at steep angles. There is no hand/object depth occlusion, world tracking when all tags leave view, or persistence after reload.
 
 ## Performance diagnostics
 
-Append `?stats=1` to the app URL to show render FPS, the slowest recent frame,
+Append `?stats=1` to the app URL to show render FPS,
 main-thread phase timings, asynchronous GPU time (when supported), draw calls
 including shadows, and camera/detector latency. This works in production as well
 as development. GPU timing is opt-in and never waits synchronously for the GPU.
 In development, `window.__paperkeep.performance.snapshot` exposes the same frame
 metrics. The scan-rate indicator alone does not measure rendering smoothness.
 
-Tracking diagnostics show p50 (median) / p95 over the last 120 detections:
+Tracking diagnostics show p50 (median) / p95 over the last 120 updates, with separate distributions for flow-only frames and frames that invoke detection:
 canvas resize, drawing/scaling the video, pixel readback, grayscale conversion,
 message delivery to the worker, WASM buffer allocation/copy, native detection,
 JSON decoding, delivery back to the main thread, board fitting, and applying the
@@ -106,14 +109,17 @@ their original settings.
 - `src/game.js`: deterministic, renderer-independent combat model.
 - `src/tracking-math.js`: homography fitting, robust board estimation, and plane pose.
 - `src/tracker.js`: worker/camera frame lifecycle and tower projection.
+- `src/tracking-worker.js` and `src/flow-tracking.js`: AprilTag acquisition, distributed optical flow, validation, and recovery.
 - `src/world.js`: original low-poly medieval castle, archers, soldiers, health bars, projectiles, and terrain in Three.js. No Age of Empires assets are used.
 - `src/main.js`: camera permission flow, mobile UI, demo controls, pause/restart lifecycle.
-- `public/vendor/apriltag/`: pinned detector binary, source revision, and license.
+- `public/vendor/apriltag/`: pinned detector binary, source revision, and license; its ES-module loader is in `src/vendor/`.
 - `scripts/build_trackers.py`: print-kit generator. After regenerating, also copy the PDF to `public/print-kit.pdf`.
 
 ## Validation
 
 `npm test` checks targeting/range, inactive towers, four-sided spawning, castle damage, defeat/reset/victory, robust partially occluded board fitting, one-tag recovery, inverse tower projection, and exact plane reprojection. `npm run build` checks the production bundle.
+
+`scripts/check-tracking-motion.js` exercises the real WASM/flow worker with the committed `tests/fixtures/board-with-towers.png` synthetic camera fixture. It checks camera motion, partial/full occlusion, reacquisition, and tower discovery/movement. Run it with Playwright CLI eval against the development server.
 
 Browser checks were run in Chromium on desktop and a 390 × 844 viewport. The real WASM detector read all 35 printed field markers. A perspective-warped image of the printed field with three tower tags was supplied through a synthetic video stream to exercise the real camera-frame/worker/render path; all three tower positions recovered within a fraction of a millimetre of their fixture positions. Partial occlusion, full tracking loss/pause, and reacquisition were exercised. This is not yet a physical-phone/camera validation: lighting, focus, motion blur, thermal limits, and device performance need a real tabletop playtest.
 
@@ -121,5 +127,6 @@ Browser checks were run in Chromium on desktop and a 390 × 844 viewport. The re
 
 - [ARENA AprilTag WASM](https://github.com/arenaxr/apriltag-js-standalone), BSD-3-Clause. Pinned revision is in `public/vendor/apriltag/SOURCE.txt`.
 - [AprilTag marker images](https://github.com/AprilRobotics/apriltag-imgs).
+- [JSFeat](https://github.com/inspirit/jsfeat), MIT; pinned to 0.0.8 and bundled locally for image pyramids, optical flow, and FAST features. Its license is in `public/vendor/jsfeat/`.
 - [Three.js](https://threejs.org/), MIT.
 - [Browser camera secure-context requirements](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia).

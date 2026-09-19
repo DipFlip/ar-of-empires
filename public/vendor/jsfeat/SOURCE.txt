@@ -1,0 +1,5 @@
+JSFeat 0.0.8 (npm dependency, bundled into the tracking worker)
+https://github.com/inspirit/jsfeat
+Copyright (c) 2012 Eugene Zatepyakin
+MIT license in LICENSE.
+Used for image pyramids, FAST corners and pyramidal Lucas-Kanade optical flow.

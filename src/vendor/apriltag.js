@@ -19,3 +19,6 @@ else if (typeof define === 'function' && define['amd'])
   define([], function() { return AprilTagWasm; });
 else if (typeof exports === 'object')
   exports["AprilTagWasm"] = AprilTagWasm;
+
+// ES module adapter; upstream loader otherwise unchanged.
+export default AprilTagWasm;

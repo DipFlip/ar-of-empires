@@ -35,19 +35,22 @@ export class PerformanceMonitor {
   this.start=now;this.frames=0;this.sums={};this.worst=0;
   if(this.panel){
    const s=this.snapshot,t=this.tracker.metrics||{},ms=value=>Number.isFinite(value)?value.toFixed(1):'—';
-   const summary=this.tracker.getTimingSummary(),pair=key=>summary[key]?`${ms(summary[key].p50)}/${ms(summary[key].p95)}`:'—/—';
+   const summary=this.tracker.getTimingSummary(),pair=(key,group=summary)=>group?.[key]?`${ms(group[key].p50)}/${ms(group[key].p95)}`:'—/—';
    const camera=this.tracker.video.srcObject?.getVideoTracks?.()[0]?.getSettings?.();
-   this.panel.textContent=`Render ${ms(s.fps)} fps · scans ${ms(t.hz)} Hz
+   this.panel.textContent=`Render ${ms(s.fps)} fps · tracking ${ms(t.hz)} Hz
+${t.mode||'detect'} · ${t.trackedPoints||0} points · full scans ${ms(summary.detectionHz)} Hz
 Render CPU ${ms(s.renderCpuMs)} · GPU ${ms(s.gpuMs)} ms
 Game ${ms(s.gameMs)} · scene ${ms(s.sceneMs)} · UI ${ms(s.uiMs)} ms
 Tracking p50/p95 ms · ${summary.samples} samples
 Capture ${pair('prepMs')} · resize ${pair('resizeMs')}
 Draw ${pair('drawMs')} · readback ${pair('readbackMs')}
 Gray ${pair('grayMs')} · to worker ${pair('outboundMs')}
-WASM copy ${pair('bufferMs')} · detect ${pair('detectMs')}
+Flow ${pair('flowMs',summary.flow)} · pyramid ${pair('pyramidMs')}
+Full detect ${pair('detectMs',summary.detection)} · seed ${pair('seedMs',summary.detection)}
 Decode ${pair('decodeMs')} · return ${pair('returnMs')}
 Fit ${pair('fitMs')} · apply ${pair('applyMs')}
-Cycle ${pair('cycleMs')} · >16.7ms ${ms(summary.overBudgetPercent)}%
+Flow cycle ${pair('cycleMs',summary.flow)} · full ${pair('cycleMs',summary.detection)}
+All cycles ${pair('cycleMs')} · >16.7ms ${ms(summary.overBudgetPercent)}%
 RAF wait ${pair('idleMs')} · interval ${pair('intervalMs')}
 Render wait ${pair('renderWaitMs')} · capture→submit ${pair('captureToRenderMs')}
 Input ${t.width||0}×${t.height||0} · camera setting ${ms(camera?.frameRate)} fps
